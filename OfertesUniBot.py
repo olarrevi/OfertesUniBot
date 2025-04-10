@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+"""
+Aquest script implementa scraping ètic per detectar ofertes de convocatòries universitàries.
+S'inclou un agent (mitjançant els headers HTTP) amb el correu de contacte per permetre la comunicació
+amb els responsables dels sistemes, sempre que sigui necessari.
+"""
+
 import requests
 import json
 import uuid
@@ -9,36 +15,46 @@ from datetime import datetime, timedelta
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
 # ============================================================
-# Parámetros globales para ambas fuentes
+# Configuració de contacte i headers per scraping ètic
+# ============================================================
+CONTACT_EMAIL = "your_email@example.com"  # Reemplaça amb el teu correu electrònic
+HEADERS = {
+    "User-Agent": f"OfertesUniScraper (contact: {CONTACT_EMAIL})"
+}
+
+# ============================================================
+# Paràmetres globals per a les dues fonts
 # ============================================================
 
-# Fuente UAB: API de edictes
+# Font UAB: API de edictes
 API_URL = "https://tauler.seu-e.cat/api/edictes?page=0&size=25&sort=dataPublicacioEfectiva%2Cdesc&ens=11&locale=ca"
 BASE_ENLACE_EDICTES = "https://tauler.seu-e.cat/detall?idEns=11&idEdicte="
 FILTER_CLASSIFICATION = "Selecció de PAS"
-# Ahora se usa una lista de palabras clave para filtrar el título de la convocatoria
+# Ara s'utilitza una llista de paraules clau per filtrar el títol
 FILTER_TITLE_KEYWORDS = ["sociologia", "polítiques"]
-MAX_DAYS_API = 3  # Se consideran ofertas publicadas hace menos de 3 días
+MAX_DAYS_API = 3  # Es consideren ofertes publicades fa menys de 3 dies
 
-# Fuente UB: Scraping de ofertas
-SCRAP_URL_BASE = "https://seu.ub.edu/ofertaPublicaCategoriaPublic/categories?tipus=totes&text=sociologia&estat=Oberta&tipusOferta=59158&dataOfertaPublicaFilter=dataPublicacio&ordreOfertaPublicaFilter=desc.label"
-# Lista de palabras clave para filtrar el título en el scraping
+# Font UB: Scraping de ofertes
+SCRAP_URL_BASE = ("https://seu.ub.edu/ofertaPublicaCategoriaPublic/categories?"
+                  "tipus=totes&text=sociologia&estat=Oberta&tipusOferta=59158&"
+                  "dataOfertaPublicaFilter=dataPublicacio&ordreOfertaPublicaFilter=desc.label")
+# Llista de paraules clau per filtrar el títol en el scraping
 SCRAP_FILTER_PHRASES = ["sociologia", "polítiques"]
-MAX_DAYS_SCRAP = 30  # Ofertas de hasta 30 días
-MAX_RESULT_SCRAP = 100  # Resultados máximos por página
-JSON_FILE = "ofertas_sociologia.json"  # Archivo para almacenar el histórico y detectar novedades
+MAX_DAYS_SCRAP = 30  # Ofertes dels darrers 30 dies
+MAX_RESULT_SCRAP = 100  # Nombre màxim de resultats per pàgina
+JSON_FILE = "ofertas_sociologia.json"  # Fitxer per emmagatzemar l'històric i detectar novetats
 
-# Parámetros para Telegram
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"  # Reemplaza por tu token
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"      # Reemplaza por el chat id
+# Paràmetres per Telegram
+TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"  # Reemplaça amb el teu token de bot
+TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"      # Reemplaça amb l'ID del chat
 
 # ============================================================
-# Función para generar idEdicte numérico a partir de los 10 primeros caracteres del título (para UB)
+# Funció per generar idEdicte numèric a partir dels 10 primers caràcters del títol (per UB)
 # ============================================================
 def generar_id_numeric(titulo):
     """
-    Genera un id numérico de 10 dígitos a partir de los 10 primeros caracteres del título.
-    Se utiliza SHA‑256 y se extraen los 10 primeros dígitos de su valor numérico.
+    Genera un id numèric de 10 dígits a partir dels 10 primers caràcters del títol.
+    S'utilitza SHA‑256 i s'extreuen els 10 primers dígits de la seva representació numèrica.
     """
     partial = titulo[:10]
     hash_val = hashlib.sha256(partial.encode()).hexdigest()
@@ -46,10 +62,10 @@ def generar_id_numeric(titulo):
     return numeric_id
 
 # ============================================================
-# Funciones para obtener edictes desde el API (UAB)
+# Funcions per obtenir edictes des de l'API (UAB)
 # ============================================================
 def get_edictes():
-    response = requests.get(API_URL)
+    response = requests.get(API_URL, headers=HEADERS)
     response.raise_for_status()
     data = response.json()
     edictes = data.get("edictes", [])
@@ -60,17 +76,17 @@ def get_edictes():
         id_api = edicte.get("id_edicte", "")
         titulo = edicte.get("titol", "")
         
-        # Filtrar por clasificación
+        # Filtrar per classificació
         classificacions = edicte.get("classificacions", [])
         matching_class = next((cl for cl in classificacions if cl.get("subcategoria") == FILTER_CLASSIFICATION), None)
         if not matching_class:
             continue
 
-        # Comprobar si el título contiene al menos una palabra clave de FILTER_TITLE_KEYWORDS
+        # Comprovar si el títol conté almenys una paraula clau
         if not any(keyword.lower() in titulo.lower() for keyword in FILTER_TITLE_KEYWORDS):
             continue
 
-        # Filtrar por fecha de publicación (oferta publicada hace menos de MAX_DAYS_API días)
+        # Filtrar per data de publicació (fa menys de MAX_DAYS_API dies)
         fecha_publicacion = edicte.get("data_publicacio", "")
         try:
             fecha_dt = datetime.strptime(fecha_publicacion, "%Y-%m-%d")
@@ -79,7 +95,7 @@ def get_edictes():
         if (now - fecha_dt).days >= MAX_DAYS_API:
             continue
         
-        # Extraer estado, enlace y campos de clasificación
+        # Extreure estat, enllaç i camps de classificació
         tags = edicte.get("tags", [])
         estado = tags[0] if tags else ""
         enlace = BASE_ENLACE_EDICTES + str(id_api)
@@ -95,17 +111,17 @@ def get_edictes():
             "concepte": concepte,
             "categoria": categoria,
             "subcategoria": subcategoria,
-            "idEdicte": id_api,  # Se guarda el idEdicte real de la API
+            "idEdicte": id_api,  # s'utilitza l'idEdicte real
             "seguiment": False,
             "universitat": "UAB"
         })
     return resultados
 
 # ============================================================
-# Funciones para hacer scraping en la fuente de ofertas (UB)
+# Funcions per fer scraping en la font UB
 # ============================================================
 def scrap_ofertas_filtradas(url, filtro_frases=SCRAP_FILTER_PHRASES, dias_maximo=MAX_DAYS_SCRAP):
-    response = requests.get(url)
+    response = requests.get(url, headers=HEADERS)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, 'html.parser')
     rows = soup.find_all('tr')
@@ -118,22 +134,22 @@ def scrap_ofertas_filtradas(url, filtro_frases=SCRAP_FILTER_PHRASES, dias_maximo
         if len(celdas) < 4:
             continue
         
-        titulo_tag = celdas[0].find('a')
+        titulo_tag = row.find('a')
         if titulo_tag:
             titulo = titulo_tag.get_text(strip=True)
             enlace = urljoin(url, titulo_tag.get('href', '').strip())
         else:
-            titulo = celdas[0].get_text(strip=True)
+            titulo = row.get_text(strip=True)
             enlace = ""
         
         fecha_publicacion_str = celdas[1].get_text(strip=True)
         estado = celdas[3].get_text(strip=True)
         
-        # Solo se consideran ofertas en estado "oberta"
+        # Només es consideren ofertes en estat "oberta"
         if estado.lower() != "oberta":
             continue
         
-        # Comprobar si el título contiene al menos una de las frases de filtro
+        # Verificar que el títol contingui almenys una de les frases filtrants
         if not any(keyword.lower() in titulo.lower() for keyword in filtro_frases):
             continue
         
@@ -143,7 +159,6 @@ def scrap_ofertas_filtradas(url, filtro_frases=SCRAP_FILTER_PHRASES, dias_maximo
             continue
         
         if fecha_limite <= fecha_publicacion <= hoy:
-            # Para UB, se genera idEdicte a partir del título
             idEdicte = generar_id_numeric(titulo)
             ofertas_filtradas.append({
                 "titulo": titulo,
@@ -168,121 +183,118 @@ def construir_url_con_paginacion(url_base, max_result, offset):
     url_parts[4] = urlencode(query, doseq=True)
     return urlunparse(url_parts)
 
-def scrap_todas_ofertas(url_base, filtro_frases=SCRAP_FILTER_PHRASES, dias_maximo=MAX_DAYS_SCRAP, max_result=MAX_RESULT_SCRAP):
-    todas_ofertas = []
+def scrap_totes_ofertes(url_base, filtro_frases=SCRAP_FILTER_PHRASES, dias_maximo=MAX_DAYS_SCRAP, max_result=MAX_RESULT_SCRAP):
+    totes_ofertes = []
     offset = 0
     while True:
         url_paginada = construir_url_con_paginacion(url_base, max_result, offset)
-        print(f"Procesando URL: {url_paginada}")
-        ofertas = scrap_ofertas_filtradas(url_paginada, filtro_frases=filtro_frases, dias_maximo=dias_maximo)
-        if not ofertas:
+        print(f"Procesant URL: {url_paginada}")
+        ofertes = scrap_ofertas_filtradas(url_paginada, filtro_frases=filtro_frases, dias_maximo=dias_maximo)
+        if not ofertes:
             break
-        todas_ofertas.extend(ofertas)
-        if len(ofertas) < max_result:
+        totes_ofertes.extend(ofertes)
+        if len(ofertes) < max_result:
             break
         offset += max_result
-    return todas_ofertas
+    return totes_ofertes
 
 # ============================================================
-# Función para detectar ofertas nuevas y actualizaciones
+# Funció per detectar ofertes noves i actualitzacions
 # ============================================================
-def detectar_ofertas(current_offers, archivo_json):
+def detectar_ofertes(current_offers, archivo_json):
     """
-    Se incluirán solo las ofertas que cumplan:
-      - (concepte == "Tipus de documents" and categoria == "Convocatòria" and subcategoria == "Selecció de PAS")
-      o bien, que tengan "seguiment" True.
-    Se retorna una tupla con:
-      (ofertas_nuevas, ofertas_actualizadas)
+    Es consideraran només les ofertes que compleixin:
+      - (concepte == "Tipus de documents" i categoria == "Convocatòria" i subcategoria == "Selecció de PAS")
+      o que tinguin "seguiment" True.
+    La comparació es realitza utilitzant idEdicte.
     
-    La comparación se realiza usando el idEdicte.
+    Retorna una tupla amb (ofertes_noves, ofertes_actualitzades).
     """
-    # Filtrar ofertas que cumplen la condición
-    ofertas_filtradas = [offer for offer in current_offers 
-                           if (offer.get("concepte") == "Tipus de documents" and 
-                               offer.get("categoria") == "Convocatòria" and 
-                               offer.get("subcategoria") == "Selecció de PAS")
-                           or offer.get("seguiment", False)]
+    # Filtrar ofertes que compleixen la condició
+    ofertes_filtrades = [offer for offer in current_offers 
+                         if (offer.get("concepte") == "Tipus de documents" and 
+                             offer.get("categoria") == "Convocatòria" and 
+                             offer.get("subcategoria") == "Selecció de PAS")
+                         or offer.get("seguiment", False)]
     
-    # Cargar ofertas previas desde el JSON (si existen)
     if os.path.exists(archivo_json):
         with open(archivo_json, 'r', encoding='utf-8') as f:
-            ofertas_previas = json.load(f)
-        # Sólo se incluyen aquellos registros que tengan la clave "idEdicte"
-        prev_dict = {offer["idEdicte"]: offer for offer in ofertas_previas if "idEdicte" in offer}
+            ofertes_previes = json.load(f)
+        # Incloure només els registres amb la clau "idEdicte"
+        prev_dict = {offer["idEdicte"]: offer for offer in ofertes_previes if "idEdicte" in offer}
     else:
         prev_dict = {}
     
-    ofertas_nuevas = []
-    ofertas_actualizadas = []
+    ofertes_noves = []
+    ofertes_actualitzades = []
     
-    for offer in ofertas_filtradas:
+    for offer in ofertes_filtrades:
         idEdicte = offer.get("idEdicte")
         if idEdicte not in prev_dict:
-            ofertas_nuevas.append(offer)
+            ofertes_noves.append(offer)
         else:
-            # Si ya existe y está en seguiment, se considera actualización.
+            # Si ja existeix i està en seguiment, es considera actualització
             if offer.get("seguiment", False):
-                ofertas_actualizadas.append(offer)
+                ofertes_actualitzades.append(offer)
     
-    # Actualizar el archivo JSON con las ofertas filtradas (cumpliendo la condición)
+    # Actualitzar el fitxer JSON amb les ofertes filtrades
     with open(archivo_json, 'w', encoding='utf-8') as f:
-        json.dump(ofertas_filtradas, f, ensure_ascii=False, indent=4)
+        json.dump(ofertes_filtrades, f, ensure_ascii=False, indent=4)
     
-    return ofertas_nuevas, ofertas_actualizadas
+    return ofertes_noves, ofertes_actualitzades
 
 # ============================================================
-# Función para enviar mensajes vía Telegram
+# Funció per enviar missatges via Telegram
 # ============================================================
 def send_telegram_message(message, token=TELEGRAM_BOT_TOKEN, chat_id=TELEGRAM_CHAT_ID):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": message}
-    response = requests.post(url, json=payload)
+    response = requests.post(url, json=payload, headers=HEADERS)
     response.raise_for_status()
 
 # ============================================================
-# Función para generar el mensaje a enviar para cada oferta
+# Funció per generar el missatge a enviar per cada oferta
 # ============================================================
-def generar_mensaje(oferta):
-    mensaje = (
-        f"• Título: {oferta.get('titulo')}\n"
-        f"• Fecha Publicación: {oferta.get('fecha_publicacion')}\n"
-        f"• Estado: {oferta.get('estado')}\n"
-        f"• Enlace: {oferta.get('enlace')}\n"
-        f"• Concepte: {oferta.get('concepte')}\n"
-        f"• Categoría: {oferta.get('categoria')}\n"
-        f"• Subcategoría: {oferta.get('subcategoria')}\n"
-        f"• idEdicte: {oferta.get('idEdicte')}\n"
-        f"• Seguiment: {oferta.get('seguiment')}\n"
-        f"• Universitat: {oferta.get('universitat', '')}\n"
+def generar_missatge(offer):
+    missatge = (
+        f"• Títol: {offer.get('titulo')}\n"
+        f"• Data Publicació: {offer.get('fecha_publicacion')}\n"
+        f"• Estat: {offer.get('estado')}\n"
+        f"• Enllaç: {offer.get('enlace')}\n"
+        f"• Concepte: {offer.get('concepte')}\n"
+        f"• Categoria: {offer.get('categoria')}\n"
+        f"• Subcategoria: {offer.get('subcategoria')}\n"
+        f"• idEdicte: {offer.get('idEdicte')}\n"
+        f"• Seguiment: {offer.get('seguiment')}\n"
+        f"• Universitat: {offer.get('universitat', '')}\n"
     )
-    return mensaje
+    return missatge
 
 # ============================================================
-# Función para procesar comandos de Telegram
+# Funció per processar comandes de Telegram
 # ============================================================
 def process_telegram_commands():
     """
-    Consulta los comandos pendientes en Telegram.
-    Si se recibe el comando "/seguiment {idEdicte}", se actualiza el JSON para
-    marcar esa oferta con "seguiment": True y se envía un mensaje de confirmación.
+    Consulta les comandes pendents a Telegram.
+    Si es rep la comanda "/seguiment {idEdicte}", s'actualitza el fitxer JSON per
+    marcar aquesta oferta amb "seguiment": True i s'envia un missatge de confirmació.
     """
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     try:
-        response = requests.get(url)
+        response = requests.get(url, headers=HEADERS)
         response.raise_for_status()
     except Exception as e:
-        print(f"Error al obtener comandos de Telegram: {e}")
+        print(f"Error en obtenir comandes de Telegram: {e}")
         return
     
     updates = response.json().get("result", [])
     last_update_id = None
 
-    # Cargar ofertas almacenadas desde JSON
     if os.path.exists(JSON_FILE):
         with open(JSON_FILE, 'r', encoding='utf-8') as f:
-            ofertas_guardadas = json.load(f)
+            ofertes_guardades = json.load(f)
     else:
-        ofertas_guardadas = []
+        ofertes_guardades = []
 
     for update in updates:
         message = update.get("message", {})
@@ -291,71 +303,68 @@ def process_telegram_commands():
             parts = text.split()
             if len(parts) >= 2:
                 idEdicte_cmd = parts[1].strip()
-                encontrado = False
-                for oferta in ofertas_guardadas:
+                trobat = False
+                for oferta in ofertes_guardades:
                     if oferta.get("idEdicte") == idEdicte_cmd:
                         oferta["seguiment"] = True
-                        encontrado = True
-                        send_telegram_message(f"Seguiment activado para idEdicte {idEdicte_cmd}")
-                        print(f"Seguiment activado para idEdicte {idEdicte_cmd}")
+                        trobat = True
+                        send_telegram_message(f"Seguiment activat per idEdicte {idEdicte_cmd}")
+                        print(f"Seguiment activat per idEdicte {idEdicte_cmd}")
                         break
-                if not encontrado:
-                    send_telegram_message(f"No se encontró oferta con idEdicte {idEdicte_cmd}")
-                    print(f"No se encontró oferta con idEdicte {idEdicte_cmd}")
+                if not trobat:
+                    send_telegram_message(f"No s'ha trobat oferta amb idEdicte {idEdicte_cmd}")
+                    print(f"No s'ha trobat oferta amb idEdicte {idEdicte_cmd}")
         update_id = update.get("update_id")
         if last_update_id is None or update_id > last_update_id:
             last_update_id = update_id
 
-    # Marcar los updates leídos para no procesarlos de nuevo
     if last_update_id is not None:
         url_offset = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_update_id+1}"
         try:
-            requests.get(url_offset)
+            requests.get(url_offset, headers=HEADERS)
         except Exception as e:
-            print(f"Error al actualizar offset: {e}")
+            print(f"Error en actualitzar offset: {e}")
 
-    # Guardar modificaciones en el JSON (si hubo cambios en seguiment)
     with open(JSON_FILE, 'w', encoding='utf-8') as f:
-        json.dump(ofertas_guardadas, f, ensure_ascii=False, indent=4)
+        json.dump(ofertes_guardades, f, ensure_ascii=False, indent=4)
 
 # ============================================================
-# Función principal (ejecuta la verificación una sola vez)
+# Funció principal (executa la verificació una sola vegada)
 # ============================================================
 def main():
-    # Primero, procesar comandos pendientes de Telegram (para actualizar seguiment)
+    # Processar primer les comandes pendents de Telegram per actualitzar el seguiment
     process_telegram_commands()
 
-    # Obtener ofertas de ambas fuentes
-    edictes = get_edictes()  # Fuente UAB
-    ofertas_scrap = scrap_todas_ofertas(SCRAP_URL_BASE)  # Fuente UB
-    current_offers = edictes + ofertas_scrap
+    # Obtenir ofertes de les dues fonts
+    edictes = get_edictes()  # Font UAB
+    ofertes_scrap = scrap_totes_ofertes(SCRAP_URL_BASE)  # Font UB
+    current_offers = edictes + ofertes_scrap
 
-    # Detectar ofertas nuevas y actualizaciones aplicando la condición:
-    # Solo se incluyen si (concepte, categoria, subcategoria) son:
-    # "Tipus de documents", "Convocatòria", "Selecció de PAS",
-    # o si el seguimiento ya está activado (seguiment True).
-    nuevas, actualizadas = detectar_ofertas(current_offers, JSON_FILE)
+    # Detectar ofertes noves i actualitzacions aplicant la condició:
+    # Inclou només ofertes que compleixin: "Tipus de documents", "Convocatòria" i "Selecció de PAS",
+    # o que ja estiguin en seguiment (seguiment True).
+    noves, actualitzades = detectar_ofertes(current_offers, JSON_FILE)
     
-    # Enviar mensajes separados para Ofertas Nuevas y Actualizaciones.
-    if nuevas:
-        header_new = "===== Ofertas Nuevas =====\n"
-        mensaje_new = header_new + "\n".join(generar_mensaje(offer) for offer in nuevas)
-        send_telegram_message(mensaje_new)
-        print("Notificaciones enviadas para Ofertas Nuevas:")
-        for offer in nuevas:
+    # Enviar missatges separats per Ofertes Noves i Actualitzacions.
+    if noves:
+        header_new = "===== Ofertes Noves =====\n"
+        missatge_new = header_new + "\n".join(generar_missatge(offer) for offer in noves)
+        send_telegram_message(missatge_new)
+        print("Notificacions enviades per Ofertes Noves:")
+        for offer in noves:
             print(f"- {offer.get('titulo')}")
     else:
-        print("No se han detectado Ofertas Nuevas.")
+        print("No s'han detectat Ofertes Noves.")
     
-    if actualizadas:
-        header_update = "===== Actualizaciones =====\n"
-        mensaje_update = header_update + "\n".join(generar_mensaje(offer) for offer in actualizadas)
-        send_telegram_message(mensaje_update)
-        print("Notificaciones enviadas para Actualizaciones:")
-        for offer in actualizadas:
+    if actualitzades:
+        header_update = "===== Actualitzacions =====\n"
+        missatge_update = header_update + "\n".join(generar_missatge(offer) for offer in actualitzades)
+        send_telegram_message(missatge_update)
+        print("Notificacions enviades per Actualitzacions:")
+        for offer in actualitzades:
             print(f"- {offer.get('titulo')}")
     else:
-        print("No se han detectado Actualizaciones.")
+        print("No s'han detectat Actualitzacions.")
 
 if __name__ == "__main__":
     main()
