@@ -1,114 +1,159 @@
-```markdown
-# Bot de Ofertas Universitarias
+# Bot OfertesUni para Convocatorias Universitarias
 
-Este proyecto es un bot en Python que obtiene ofertas de dos fuentes (API y scraping) de convocatorias universitarias y envía notificaciones a través de Telegram. Además, permite actualizar el seguimiento de ofertas mediante comandos de Telegram. El script filtra las ofertas según criterios específicos y las guarda en un archivo JSON para comparar en ejecuciones futuras, notificando ofertas nuevas y actualizaciones según la configuración.
+Este proyecto contiene un script en Python que consulta y filtra ofertas de dos fuentes (la API de edictes de la UAB y el scraping de la UB) para detectar convocatorias de Selecció de PAS. El sistema envía notificaciones a través de un bot de Telegram y permite marcar convocatorias para recibir actualizaciones a través del comando `/seguiment {idEdicte}`.
 
 ## Características
 
-- **Obtención de datos de dos fuentes:**
-  - **UAB (API de edictes):** Se filtran y procesan las ofertas usando la API.
-  - **UB (Scraping):** Se extraen datos de la página web mediante BeautifulSoup.
-- **Filtrado avanzado:**
-  - Se consideran ofertas que cumplan con la siguiente condición:
-    - `concepte` = `"Tipus de documents"`,  
-      `categoria` = `"Convocatòria"` y  
-      `subcategoria` = `"Selecció de PAS"`.
-  - Si una oferta no cumple el criterio anterior, solo se incluirá si tiene el flag de seguimiento (`seguiment = True`).
-  - Se utilizan listas de palabras clave para filtrar el título:
-    - `FILTER_TITLE_KEYWORDS` (para la API) y `SCRAP_FILTER_PHRASES` (para el scraping). Ejemplo: `["sociologia", "polítiques"]`.
-- **Gestión de ofertas:**
-  - Se genera un identificador único (`idEdicte`) para cada oferta.
-    - Para la API, se utiliza el `id_edicte` real.
-    - Para el scraping, se genera un id numérico a partir de los 10 primeros caracteres del título (usando SHA‑256).
-  - Se guarda la información en un archivo JSON, lo que permite detectar ofertas nuevas y actualizaciones entre ejecuciones.
-- **Notificaciones mediante Telegram:**
-  - Se envían mensajes diferenciados para **Ofertas Nuevas** y **Actualizaciones**.
-  - Se procesan comandos entrantes de Telegram para activar el seguimiento de una oferta mediante `/seguiment {idEdicte}`.
-- **Configuración flexible:**
-  - Parámetros de filtrado, conexión a la API, rutas, etc. son fácilmente configurables en el script.
+- **Consulta de Ofertas:**  
+  - Obtiene ofertas desde la API de la UAB y mediante scraping de la web de la UB.
+  - Aplica filtros para incluir solo ofertas que sean:
+    - Convocatorias (concepte = "Tipus de documents", categoría = "Convocatòria" y subcategoría = "Selecció de PAS").
+    - **O** que estén marcadas para seguimiento (campo `"seguiment": True`).
 
-## Requisitos y Dependencias
+- **Filtrado por Palabras Clave:**  
+  - Permite usar una lista de palabras clave para filtrar el título de la oferta.  
+    Por ejemplo: `["sociologia", "polítiques"]`.
 
-- **Python 3**
-- **Bibliotecas Python:**
-  - `requests`
-  - `beautifulsoup4`
-  - `lxml` (opcional, para acelerar el parsing de HTML)
-- **Instalación de dependencias:**
-  ```bash
-  pip3 install requests beautifulsoup4 lxml
-  ```
+- **Notificaciones vía Telegram:**  
+  - Envía dos tipos de mensajes:
+    - **Ofertas Nuevas:** para convocatorias recién detectadas.
+    - **Actualizaciones:** para ofertas que ya existen y están marcadas en seguimiento.
+  
+- **Gestión de Seguimiento:**  
+  - A través del comando `/seguiment {idEdicte}` puedes marcar una oferta para seguimiento.
+  - Esto permite recibir notificaciones de actualizaciones en ofertas que, de otro modo, no se mostrarían.
 
-## Configuración
+- **Persistencia con JSON:**  
+  - Las ofertas procesadas se guardan en un archivo JSON (`ofertas_sociologia.json`) que se utiliza para detectar novedades y actualizaciones (utilizando el campo `idEdicte`).
 
-1. **Credenciales de Telegram:**
-   - Reemplaza `YOUR_BOT_TOKEN` y `YOUR_CHAT_ID` en el script con los valores correspondientes a tu bot y el chat donde se enviarán las notificaciones.
+## Requisitos
 
-2. **Listas de palabras clave:**
-   - Edita las variables `FILTER_TITLE_KEYWORDS` y `SCRAP_FILTER_PHRASES` para añadir o modificar los términos de filtrado (por ejemplo: `["sociologia", "polítiques"]`).
+- **Python 3:** (Se recomienda Python 3.7 o superior)
+- **Dependencias en Python:**
+  - [requests](https://pypi.org/project/requests/)
+  - [beautifulsoup4](https://pypi.org/project/beautifulsoup4/)
+- **Acceso a Internet:**  
+  Para las consultas a la API y el scraping.
 
-3. **Otros parámetros configurables:**
-   - Modifica `API_URL`, `SCRAP_URL_BASE`, `MAX_DAYS_API`, `MAX_DAYS_SCRAP` y `MAX_RESULT_SCRAP` según los requerimientos de tu fuente de datos.
-   - `JSON_FILE` es la ruta del archivo donde se guardará el historial de ofertas.
+- **Cuenta y Bot de Telegram:**  
+  - Necesitas un bot con su token (configurado en `TELEGRAM_BOT_TOKEN`).
+  - El ID del chat (configurado en `TELEGRAM_CHAT_ID`).
+
+## Instalación
+
+1. **Descarga el Script:**  
+   Clona este repositorio o descarga el archivo `OfertesUniBot.py` a tu sistema.
+
+2. **Instala las Dependencias:**  
+   Ejecuta el siguiente comando para instalar las librerías necesarias:
+   ```bash
+   pip3 install requests beautifulsoup4
+   ```
+
+3. **Configura el Script:**  
+   - Edita `OfertesUniBot.py` y reemplaza los siguientes parámetros con tus datos:
+     - `TELEGRAM_BOT_TOKEN` – Tu token de bot de Telegram.
+     - `TELEGRAM_CHAT_ID` – El identificador del chat donde se enviarán las notificaciones.
+   - Ajusta, si lo deseas, las listas de palabras clave:
+     - `FILTER_TITLE_KEYWORDS` para la API.
+     - `SCRAP_FILTER_PHRASES` para el scraping.
+   - Puedes modificar otros parámetros globales (por ejemplo, `MAX_DAYS_API`, `MAX_DAYS_SCRAP`).
 
 ## Uso
 
-El script se ejecuta de forma única para obtener y comparar las ofertas actuales con las previas, enviando notificaciones por Telegram para ofertas nuevas y actualizaciones de aquellas ofertas que tienen el flag de seguimiento activado.
+El script se ejecuta de forma única (por ejemplo, una vez al día) y realiza las siguientes acciones:
 
-Para ejecutar el script:
+1. **Procesa Comandos de Telegram:**  
+   - Consulta la API de Telegram para detectar comandos pendientes.
+   - Si se recibe el comando `/seguiment {idEdicte}`, actualiza el archivo JSON para marcar esa oferta con `"seguiment": True` y envía una confirmación.
+
+2. **Obtiene Ofertas:**  
+   - Consulta las ofertas de la API (UAB) y realiza scraping de las ofertas de la UB.
+   - Cada oferta es procesada y se genera un identificador único `idEdicte` (usando el valor directo de la API o generado a partir del título para UB).
+
+3. **Filtra Ofertas:**  
+   - Se incluyen solo aquellas ofertas que cumplan:
+     - Las condiciones de convocatoria:  
+       `concepte == "Tipus de documents"`,  
+       `categoria == "Convocatòria"` y  
+       `subcategoria == "Selecció de PAS"`.
+     - **O** que tengan el campo `"seguiment": True`.
+
+4. **Detecta Novedades y Actualizaciones:**  
+   - Compara las ofertas actuales (filtradas) con las almacenadas en `ofertas_sociologia.json` (usando `idEdicte`).
+   - Se separa la notificación en:
+     - **Ofertas Nuevas:** Convocatorias recién detectadas.
+     - **Actualizaciones:** Ofertas que ya existían y que están marcadas en seguimiento.
+
+5. **Envía Notificaciones vía Telegram:**  
+   - Se envían mensajes separados para "Ofertas Nuevas" y "Actualizaciones".
+
+### Ejecución Manual
+
+Para ejecutar el script manualmente, utiliza:
 ```bash
-/usr/bin/python3 /ruta/completa/al/script.py
+/usr/bin/python3 /ruta/al/script/OfertesUniBot.py
 ```
 
-## Procesamiento de Comandos de Telegram
+## Programación en Raspbian
 
-El script consulta los comandos pendientes mediante la API de Telegram.  
-Para activar el seguimiento de una oferta, envía el comando:
-```
-/seguiment {idEdicte}
-```
-- El script busca en el archivo JSON la oferta con el identificador `{idEdicte}` y activa su flag de seguimiento (`"seguiment": True`).
-- Con el seguimiento activado, futuras actualizaciones de esa oferta se notificarán incluso si no cumple el filtro inicial.
+Puedes programar la ejecución diaria del script utilizando cron:
 
-## Ejecución Programada en Raspbian
-
-Para que el script se ejecute automáticamente (por ejemplo, cada día a las 8:00 AM) en Raspbian, utiliza **cron**:
-
-1. Abre el archivo de cron:
+1. Abre el crontab:
    ```bash
    crontab -e
    ```
-2. Añade la siguiente línea (reemplaza la ruta correcta al script):
+2. Agrega la siguiente línea (ajusta la ruta y la hora según tu necesidad):
    ```
-   0 8 * * * /usr/bin/python3 /ruta/completa/al/script.py >> /ruta/completa/al/log_script.log 2>&1
+   0 8 * * * /usr/bin/python3 /ruta/al/script/OfertesUniBot.py >> /ruta/al/log_script.log 2>&1
    ```
-   Esto ejecutará el script cada día a las 8:00 AM y redirigirá la salida a un archivo de log.
+3. Guarda y cierra el editor para que la tarea se programe.
 
-## Estructura del JSON
+## Comandos de Telegram
 
-El archivo JSON (`ofertas_sociologia.json`) contiene una lista de diccionarios, cada uno con la siguiente estructura:
+- **Activar Seguimiento:**  
+  Envía un mensaje con el siguiente formato:
+  ```
+  /seguiment {idEdicte}
+  ```
+  Por ejemplo:
+  ```
+  /seguiment 1234567890
+  ```
+  Este comando marcará la oferta con ese `idEdicte` para seguimiento, lo que permitirá que futuras actualizaciones sean notificadas.
 
+## Estructura del Archivo JSON
+
+El archivo `ofertas_sociologia.json` almacena las ofertas procesadas con la siguiente estructura:
 ```json
 {
-  "titulo": "Ejemplo de título",
-  "fecha_publicacion": "2023-07-22",
-  "estado": "oberta",
-  "enlace": "https://ejemplo.com/detalle",
+  "titulo": "Título de la oferta",
+  "fecha_publicacion": "AAAA-MM-DD (o DD-MM-YYYY dependiendo de la fuente)",
+  "estado": "Estado de la oferta",
+  "enlace": "URL de la oferta",
   "concepte": "Tipus de documents",
   "categoria": "Convocatòria",
   "subcategoria": "Selecció de PAS",
-  "idEdicte": "1234567890",
+  "idEdicte": "Identificador único (provisto o generado)",
   "seguiment": false,
-  "universitat": "UAB"  // o "UB"
+  "universitat": "UAB" // o "UB"
 }
 ```
 
-## Notas Finales
+## Notas Adicionales
 
-- Asegúrate de que el JSON no tenga registros antiguos con estructuras incompatibles. En caso de errores, considera eliminar el archivo JSON para reiniciar la base de datos.
-- El script diferencia y separa las notificaciones en dos grupos:  
-  - **Ofertas Nuevas:** aquellas ofertas que aparecen por primera vez.  
-  - **Actualizaciones:** ofertas que ya existían y están marcadas en seguimiento.
+- **Estructura de la Web y API:**  
+  Si la estructura de la API o de la página web cambia, puede ser necesario modificar la lógica de filtrado o de scraping.
+- **Historial de Ofertas:**  
+  Si encuentras problemas con el historial de ofertas (por ejemplo, ofertas sin `idEdicte`), puedes eliminar manualmente el archivo JSON para regenerar una nueva versión.
+- **Depuración y Logs:**  
+  Se recomienda redirigir la salida del script a un archivo de log para facilitar el seguimiento de errores y eventos importantes.
 
-¡Con esta configuración, tendrás un bot de Telegram que te notificará de las convocatorias que te interesan y sus actualizaciones!
+## Licencia
+
+Este proyecto se distribuye con fines educativos y puede ser modificado según tus necesidades.
+
+## Contacto
+
+Para dudas o sugerencias, puedes contactar a [oriollarrea111@gmail.com] o abrir un issue en el repositorio.
 ```
